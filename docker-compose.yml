@@ -1,0 +1,77 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mermaiddash-backend
+    environment:
+      - DATABASE_URL=file:/app/prisma/dev.db
+      - PORT=8000
+      - NODE_ENV=production
+      - AUTH_MODE=${AUTH_MODE:-local}
+      # Keep disabled by default; only enable when a trusted proxy sanitizes forwarded headers.
+      - TRUST_PROXY=false
+      # Optional for single-instance deployments:
+      # if unset, backend auto-generates and persists one in the volume.
+      # Recommended to set explicitly for portability and multi-instance setups.
+      - JWT_SECRET=${JWT_SECRET}
+      - CSRF_SECRET=${CSRF_SECRET}
+      # Optional OIDC settings (required for AUTH_MODE=hybrid or oidc_enforced)
+      # - OIDC_PROVIDER_NAME=Authentik
+      # - OIDC_ISSUER_URL=https://auth.example.com/application/o/mermaiddash/
+      # - OIDC_CLIENT_ID=your-client-id
+      # - OIDC_CLIENT_SECRET=your-client-secret
+      # - OIDC_REDIRECT_URI=https://mermaiddash.example.com/api/auth/oidc/callback
+    volumes:
+      - backend-data:/app/prisma
+    networks:
+      - mermaiddash-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:8000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: mermaiddash-frontend
+    ports:
+      - "6767:80"
+    environment:
+      # Backend URL for nginx proxy (host:port format, no protocol)
+      # Override for reverse proxy setups (e.g., mermaiddash-backend.svc.cluster.local:8000)
+      - BACKEND_URL=backend:8000
+    depends_on:
+      - backend
+    networks:
+      - mermaiddash-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:80",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  mermaiddash-network:
+    driver: bridge
+
+volumes:
+  backend-data:
