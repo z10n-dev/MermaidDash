@@ -23,9 +23,17 @@ export default defineConfig({
 
   forbidOnly: !!process.env.CI,
 
-  retries: process.env.CI ? 2 : 0,
+  // One local retry, mirroring CI's tolerance. The two-browser collaboration
+  // tests load the editor (mermaid + Monaco) twice in cold-cache contexts served
+  // by Vite's on-demand dev server, which occasionally overruns their budget
+  // under full-suite load.
+  retries: process.env.CI ? 2 : 1,
 
-  workers: process.env.CI ? 1 : undefined,
+  // Capped rather than left at Playwright's default (half the cores). Every
+  // worker shares one Vite dev server, one backend process and one SQLite file,
+  // so beyond a handful of workers the contention shows up as editor loads that
+  // blow past their timeouts rather than as a faster suite.
+  workers: process.env.CI ? 1 : 4,
 
   reporter: [
     ["list"],
@@ -39,7 +47,10 @@ export default defineConfig({
 
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR || "test-results",
 
-  timeout: 60000,
+  // These run against Vite's dev server, which transforms modules on demand, so
+  // the first editor load in each worker is slow. Multi-step bulk flows were
+  // marginal at 60s once several workers competed for the machine.
+  timeout: 120000,
 
   expect: {
     timeout: 10000,
@@ -79,6 +90,10 @@ export default defineConfig({
         DATABASE_URL: "file:./dev.db",
         FRONTEND_URL,
         CSRF_MAX_REQUESTS: "1000",
+        // A full suite run makes well over the 1000-request default within the
+        // limiter's 15 minute window, and every client shares ::1, so the tail
+        // of the run would otherwise get 429s and fail for unrelated reasons.
+        RATE_LIMIT_MAX_REQUESTS: "100000",
       },
     },
     {

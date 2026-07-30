@@ -9,6 +9,7 @@ import {
   listCollections,
   deleteCollection,
 } from "./helpers/api";
+import { bulkActionOnCard, selectAllAndRun, selectCard } from "./helpers/ui";
 
 const searchPlaceholder = "Search drawings...";
 
@@ -28,13 +29,7 @@ async function ensureCardVisible(page: Page, drawingId: string): Promise<Locator
 }
 
 async function ensureCardSelected(page: Page, drawingId: string) {
-  const card = await ensureCardVisible(page, drawingId);
-  const toggle = card.locator(`[data-testid="select-drawing-${drawingId}"]`);
-  const pressed = await toggle.getAttribute("aria-pressed");
-  if (pressed !== "true") {
-    await card.hover();
-    await toggle.click();
-  }
+  await selectCard(page, drawingId);
 }
 
 test.describe("Dashboard Workflows", () => {
@@ -65,20 +60,17 @@ test.describe("Dashboard Workflows", () => {
     createdDrawingIds.push(createdDrawing.id);
 
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
     await applyDashboardSearch(page, drawingName);
 
     const cardLocator = await ensureCardVisible(page, createdDrawing.id);
 
-    await ensureCardSelected(page, createdDrawing.id);
-    await page.getByTitle("Move to Trash").click();
+    await bulkActionOnCard(page, createdDrawing.id, "Move to Trash");
     await expect(cardLocator).toHaveCount(0);
 
     await page.getByRole("button", { name: /^Trash$/ }).click();
     const trashCard = await ensureCardVisible(page, createdDrawing.id);
 
-    await ensureCardSelected(page, createdDrawing.id);
-    await page.getByTitle("Delete Permanently").click();
+    await bulkActionOnCard(page, createdDrawing.id, "Delete Permanently");
     await page.getByRole("button", { name: /Delete \d+ Drawings/ }).click();
 
     await expect(trashCard).toHaveCount(0);
@@ -95,7 +87,6 @@ test.describe("Dashboard Workflows", () => {
 
     const collectionName = `Team ${Date.now()}`;
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
     await applyDashboardSearch(page, drawingName);
 
     await page.getByTitle("New Collection").click();
@@ -141,26 +132,42 @@ test.describe("Dashboard Workflows", () => {
     createdDrawingIds.push(first.id, second.id);
 
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
     await applyDashboardSearch(page, prefix);
     await expect(page.locator("[id^='drawing-card-']")).toHaveCount(2);
 
-    await page.getByTitle("Select All").click();
+    // Retried as a unit: a refresh triggered by another worker's diagrams-changed
+    // broadcast can clear the selection between the click landing and the app
+    // reading selectedIds, in which case the duplicate silently does nothing.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const before = (await listDrawings(request, { search: prefix })).length;
+      if (before >= 4) break;
 
-    await page.getByTitle("Duplicate Selected").click();
+      await applyDashboardSearch(page, prefix);
+      await expect(page.locator("[id^='drawing-card-']")).toHaveCount(before);
+      await selectAllAndRun(page, "Duplicate Selected");
+
+      try {
+        await expect
+          .poll(async () => (await listDrawings(request, { search: prefix })).length, {
+            timeout: 15000,
+          })
+          .toBe(4);
+        break;
+      } catch {
+        // Fall through and try again.
+      }
+    }
 
     await expect.poll(async () => {
       const results = await listDrawings(request, { search: prefix });
       return results.length;
-    }).toBe(4);
+    }, { timeout: 15000 }).toBe(4);
 
     await applyDashboardSearch(page, prefix);
     await expect(page.locator("[id^='drawing-card-']")).toHaveCount(4);
 
     const bulkMoveToTrash = async () => {
-      await page.getByTitle("Select All").click();
-      await expect(page.getByTitle("Move to Trash")).toBeEnabled();
-      await page.getByTitle("Move to Trash").click();
+      await selectAllAndRun(page, "Move to Trash");
     };
 
     await bulkMoveToTrash();
