@@ -6,6 +6,7 @@ import {
   getDrawing,
   listDrawings,
 } from "./helpers/api";
+import { bulkActionOnCard } from "./helpers/ui";
 
 /**
  * E2E Tests for Drawing Creation and Editing
@@ -21,6 +22,25 @@ import {
 const revealEditorHeader = async (page: import("@playwright/test").Page) => {
   await page.mouse.move(24, 2);
   await page.waitForTimeout(150);
+};
+
+/**
+ * Append text to the mermaid source in the editor's Monaco code panel.
+ *
+ * Monaco keeps a hidden textarea for input, so we click into the editor to
+ * focus it, jump to the end of the document, then type.
+ */
+const typeIntoMermaidSource = async (
+  page: import("@playwright/test").Page,
+  text: string
+) => {
+  const monaco = page.locator(".monaco-editor").first();
+  // Generous: @monaco-editor/react is not configured with a local loader, so the
+  // Monaco runtime is fetched from the jsdelivr CDN on first editor mount.
+  await monaco.waitFor({ state: "visible", timeout: 45000 });
+  await monaco.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(text, { delay: 20 });
 };
 
 test.describe("Drawing Creation", () => {
@@ -51,7 +71,7 @@ test.describe("Drawing Creation", () => {
     const drawingId = match![1];
     createdDrawingIds.push(drawingId);
 
-    await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
+    await page.waitForSelector("[data-mermaid-canvas]", { timeout: 15000 });
 
     const drawing = await getDrawing(request, drawingId);
     expect(drawing).toBeDefined();
@@ -73,7 +93,7 @@ test.describe("Drawing Creation", () => {
 
     await page.waitForURL(`/editor/${drawing.id}`);
 
-    await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
+    await page.waitForSelector("[data-mermaid-canvas]", { timeout: 15000 });
   });
 
   test("should display drawing name in editor header", async ({ page, request }) => {
@@ -82,7 +102,7 @@ test.describe("Drawing Creation", () => {
     createdDrawingIds.push(drawing.id);
 
     await page.goto(`/editor/${drawing.id}`);
-    await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
+    await page.waitForSelector("[data-mermaid-canvas]", { timeout: 15000 });
 
     await expect(page.getByText(drawingName)).toBeVisible();
   });
@@ -95,7 +115,7 @@ test.describe("Drawing Creation", () => {
     createdDrawingIds.push(drawing.id);
 
     await page.goto(`/editor/${drawing.id}`);
-    await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
+    await page.waitForSelector("[data-mermaid-canvas]", { timeout: 15000 });
 
     await revealEditorHeader(page);
 
@@ -121,7 +141,7 @@ test.describe("Drawing Creation", () => {
     createdDrawingIds.push(drawing.id);
 
     await page.goto(`/editor/${drawing.id}`);
-    await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
+    await page.waitForSelector("[data-mermaid-canvas]", { timeout: 15000 });
 
     await revealEditorHeader(page);
 
@@ -147,135 +167,48 @@ test.describe("Drawing Editing", () => {
     createdDrawingIds = [];
   });
 
-  test("should draw a rectangle on canvas", async ({ page, request }) => {
+  test("should edit mermaid source and persist it", async ({ page, request }) => {
     const drawing = await createDrawing(request, {
-      name: `Draw_Rect_${Date.now()}`,
-      elements: [],
+      name: `Edit_Source_${Date.now()}`,
+      content: "graph TD\n    A[Start] --> B[End]",
     });
     createdDrawingIds.push(drawing.id);
 
     await page.goto(`/editor/${drawing.id}`);
-    await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
-    await page.waitForTimeout(1500);
+    await page.waitForSelector("[data-mermaid-canvas]", { timeout: 15000 });
 
-    const canvas = page.locator("canvas.excalidraw__canvas.interactive");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
+    await typeIntoMermaidSource(page, "\n    B --> C[Extra]");
 
-    console.log(`Canvas bounding box: x=${box.x}, y=${box.y}, width=${box.width}, height=${box.height}`);
-
-    const rectangleLabel = page.locator('label:has([data-testid="toolbar-rectangle"])');
-    await rectangleLabel.click();
-    await page.waitForTimeout(500);
-
-    const isRectangleSelectedBefore = await page.locator('[data-testid="toolbar-rectangle"]').isChecked();
-    console.log("Rectangle tool selected before drawing:", isRectangleSelectedBefore);
-
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-    const startX = centerX - 100;
-    const startY = centerY - 75;
-    const endX = centerX + 100;
-    const endY = centerY + 75;
-
-    console.log(`Drawing from (${startX}, ${startY}) to (${endX}, ${endY})`);
-
-    await page.mouse.click(centerX, centerY);
-    await page.waitForTimeout(200);
-
-    await page.mouse.move(startX, startY);
-    await page.waitForTimeout(100);
-    await page.mouse.down();
-    await page.waitForTimeout(100);
-    await page.mouse.move(endX, endY, { steps: 20 });
-    await page.waitForTimeout(100);
-    await page.mouse.up();
-
-    await page.screenshot({ path: 'test-results/after-drawing.png' });
-
-    const undoButton = page.locator('button[aria-label="Undo"]');
-    const isUndoDisabled = await undoButton.getAttribute('disabled');
-    console.log("Undo button disabled:", isUndoDisabled);
-
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(500);
-
-    await page.waitForTimeout(2000);
-
-    await expect.poll(async () => {
-      const savedDrawing = await getDrawing(request, drawing.id);
-      return savedDrawing.elements?.length || 0;
-    }, { timeout: 15000 }).toBeGreaterThan(0);
-  });
-
-  test("should draw text on canvas", async ({ page, request }) => {
-    const drawing = await createDrawing(request, {
-      name: `Draw_Text_${Date.now()}`,
-      elements: [],
-    });
-    createdDrawingIds.push(drawing.id);
-
-    await page.goto(`/editor/${drawing.id}`);
-    await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
-    await page.waitForTimeout(1000);
-
-    const canvas = page.locator("canvas.excalidraw__canvas.interactive");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
-
-    await page.mouse.click(box.x + 100, box.y + 100);
-    await page.waitForTimeout(100);
-
-    await page.keyboard.press("t");
-    await page.waitForTimeout(200);
-
-    await page.mouse.click(box.x + 300, box.y + 300);
-    await page.waitForTimeout(200);
-
-    await page.keyboard.type("Hello E2E Test");
-
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(500);
-
-    await page.waitForTimeout(3000);
-
-    await expect.poll(async () => {
-      const savedDrawing = await getDrawing(request, drawing.id);
-      return savedDrawing.elements?.length || 0;
-    }, { timeout: 10000 }).toBeGreaterThan(0);
+    // The editor debounces its save, so poll the API until it lands.
+    await expect
+      .poll(async () => (await getDrawing(request, drawing.id)).content ?? "", {
+        timeout: 15000,
+      })
+      .toContain("C[Extra]");
   });
 
   test("should use undo/redo functionality", async ({ page, request }) => {
     const drawing = await createDrawing(request, {
       name: `Undo_Redo_${Date.now()}`,
-      elements: [],
+      content: "graph TD\n    A[Start] --> B[End]",
     });
     createdDrawingIds.push(drawing.id);
 
     await page.goto(`/editor/${drawing.id}`);
-    await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
-    await page.waitForTimeout(1000);
+    await page.waitForSelector("[data-mermaid-canvas]", { timeout: 15000 });
 
-    const canvas = page.locator("canvas.excalidraw__canvas.interactive");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
+    const undoButton = page.locator('button[title="Undo"]');
+    const redoButton = page.locator('button[title="Redo"]');
 
-    await page.keyboard.press("r");
-    await page.waitForTimeout(200);
+    // Nothing has been edited yet, so there is no history to step back through.
+    await expect(undoButton).toBeDisabled();
+    await expect(redoButton).toBeDisabled();
 
-    await page.mouse.move(box.x + 200, box.y + 200);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 300, box.y + 300, { steps: 5 });
-    await page.mouse.up();
+    await typeIntoMermaidSource(page, "\n    B --> C[Undo me]");
+    await expect(undoButton).toBeEnabled({ timeout: 15000 });
 
-    await page.waitForTimeout(500);
-
-    await page.keyboard.press("Meta+z");
-    await page.waitForTimeout(500);
-
-    await page.keyboard.press("Meta+Shift+z");
-    await page.waitForTimeout(500);
-
+    await undoButton.click();
+    await expect(redoButton).toBeEnabled();
   });
 });
 
@@ -303,17 +236,11 @@ test.describe("Drawing Deletion", () => {
     await page.waitForTimeout(500);
 
     const card = page.locator(`#drawing-card-${drawing.id}`);
-    await card.hover();
-
-    const selectToggle = card.locator(`[data-testid="select-drawing-${drawing.id}"]`);
-    await selectToggle.click();
-
-    await page.getByTitle("Move to Trash").click();
+    await bulkActionOnCard(page, drawing.id, "Move to Trash");
 
     await expect(card).not.toBeVisible();
 
     await page.getByRole("button", { name: /^Trash$/ }).click();
-    await page.waitForLoadState("networkidle");
 
     await expect(page.locator(`#drawing-card-${drawing.id}`)).toBeVisible();
   });
@@ -327,15 +254,14 @@ test.describe("Drawing Deletion", () => {
 
     await page.goto("/?view=trash");
     await page.getByRole("button", { name: /^Trash$/ }).click();
-    await page.waitForLoadState("networkidle");
 
+    // Waiting for the card itself, rather than networkidle: the dashboard keeps
+    // background requests in flight (socket plus thumbnail backfill), so a
+    // network-quiet window is not guaranteed to arrive.
     const card = page.locator(`#drawing-card-${drawing.id}`);
-    await card.hover();
+    await expect(card).toBeVisible({ timeout: 30000 });
 
-    const selectToggle = card.locator(`[data-testid="select-drawing-${drawing.id}"]`);
-    await selectToggle.click();
-
-    await page.getByTitle("Delete Permanently").click();
+    await bulkActionOnCard(page, drawing.id, "Delete Permanently");
 
     await page.getByRole("button", { name: /Delete \d+ Drawings?/i }).click();
 
@@ -358,13 +284,7 @@ test.describe("Drawing Deletion", () => {
     await page.getByPlaceholder("Search drawings...").fill(baseName);
     await page.waitForTimeout(500);
 
-    const card = page.locator(`#drawing-card-${drawing.id}`);
-    await card.hover();
-
-    const selectToggle = card.locator(`[data-testid="select-drawing-${drawing.id}"]`);
-    await selectToggle.click();
-
-    await page.getByTitle("Duplicate Selected").click();
+    await bulkActionOnCard(page, drawing.id, "Duplicate Selected");
 
     await expect.poll(async () => {
       const allDrawings = await listDrawings(request, { search: baseName });

@@ -6,6 +6,7 @@ import {
   createCollection,
   deleteCollection,
 } from "./helpers/api";
+import { bulkActionOnCards } from "./helpers/ui";
 
 /**
  * E2E Tests for Drag and Drop functionality
@@ -121,45 +122,71 @@ test.describe("Drag and Drop - Collections", () => {
     await searchInput.fill(prefix);
     await page.waitForTimeout(500);
 
-    const card1 = page.locator(`#drawing-card-${drawing1.id}`);
-    const card2 = page.locator(`#drawing-card-${drawing2.id}`);
+    // Retried as a unit: the bulk menu closes if the dashboard refreshes (any
+    // worker's diagrams-changed broadcast triggers one), which would otherwise
+    // leave the collection-option click waiting on a menu that is gone.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const moved = await listDrawings(request, { search: prefix, collectionId: collection.id });
+      if (moved.length === 2) break;
 
-    await card1.hover();
-    const toggle1 = card1.locator(`[data-testid="select-drawing-${drawing1.id}"]`);
-    await toggle1.click();
+      try {
+        await bulkActionOnCards(page, [drawing1.id, drawing2.id], "Move Selected");
+        await page
+          .locator(`button:has-text("${collection.name}")`)
+          .last()
+          .click({ timeout: 5000 });
 
-    await card2.hover();
-    const toggle2 = card2.locator(`[data-testid="select-drawing-${drawing2.id}"]`);
-    await toggle2.click();
+        await expect
+          .poll(
+            async () =>
+              (await listDrawings(request, { search: prefix, collectionId: collection.id }))
+                .length,
+            { timeout: 15000 }
+          )
+          .toBe(2);
+        break;
+      } catch {
+        await page.keyboard.press("Escape");
+        await searchInput.fill(prefix);
+      }
+    }
 
-    const moveButton = page.getByTitle("Move Selected");
-    await moveButton.click();
-
-    await page.waitForTimeout(300);
-    const collectionOption = page.locator(`button:has-text("${collection.name}")`).last();
-    await collectionOption.click();
-
-    await page.waitForTimeout(500);
+    await expect
+      .poll(
+        async () =>
+          (await listDrawings(request, { search: prefix, collectionId: collection.id })).length,
+        { timeout: 15000 }
+      )
+      .toBe(2);
 
     await page.getByRole("navigation").getByRole("button", { name: collection.name }).click();
-    await page.waitForLoadState("networkidle");
 
-    await expect(page.locator(`#drawing-card-${drawing1.id}`)).toBeVisible();
-    await expect(page.locator(`#drawing-card-${drawing2.id}`)).toBeVisible();
+    await expect(page.locator(`#drawing-card-${drawing1.id}`)).toBeVisible({ timeout: 30000 });
+    await expect(page.locator(`#drawing-card-${drawing2.id}`)).toBeVisible({ timeout: 30000 });
   });
 });
 
 test.describe("Drag and Drop - File Import", () => {
   let createdDrawingIds: string[] = [];
+  /**
+   * Names this test imported, so cleanup can find drawings whose id it never
+   * learned. Scoped per test on purpose: tests in this file run in parallel
+   * workers against one database, so a broad "ImportedDnD" sweep would delete a
+   * sibling test's diagram while that test was still asserting on it.
+   */
+  let importedNameTokens: string[] = [];
 
   test.afterEach(async ({ request }) => {
-    const drawings = await listDrawings(request, { search: "ImportedDnD" });
-    for (const drawing of drawings) {
-      try {
-        await deleteDrawing(request, drawing.id);
-      } catch {
+    for (const token of importedNameTokens) {
+      const drawings = await listDrawings(request, { search: token });
+      for (const drawing of drawings) {
+        try {
+          await deleteDrawing(request, drawing.id);
+        } catch {
+        }
       }
     }
+    importedNameTokens = [];
 
     for (const id of createdDrawingIds) {
       try {
@@ -172,31 +199,27 @@ test.describe("Drag and Drop - File Import", () => {
 
   test("should show drop zone overlay when dragging files", async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
 
-    await expect(page.getByRole("button", { name: /Import/i })).toBeVisible();
+    // Exact match on purpose: a loose /Import/i also matches a card's
+    // "Select ImportedDnD_..." toggle, which trips Playwright's strict mode
+    // whenever an imported diagram happens to be on the dashboard.
+    await expect(page.getByRole("button", { name: "Import", exact: true })).toBeVisible({
+      timeout: 30000,
+    });
     await expect(page.locator("#dashboard-import")).toBeAttached();
   });
 
-  test("should import excalidraw file via file input", async ({ page, request }) => {
+  test("should import a mermaid file via file input", async ({ page, request }) => {
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
 
     const fileBase = `ImportedDnD_${Date.now()}`;
-    const excalidrawContent = JSON.stringify({
-      type: "excalidraw",
-      version: 2,
-      source: "e2e-test",
-      elements: [],
-      appState: { viewBackgroundColor: "#ffffff" },
-      files: {},
-    });
+    importedNameTokens.push(fileBase);
 
     const fileInput = page.locator("#dashboard-import");
     await fileInput.setInputFiles({
-      name: `${fileBase}.excalidraw`,
-      mimeType: "application/json",
-      buffer: Buffer.from(excalidrawContent),
+      name: `${fileBase}.mmd`,
+      mimeType: "text/plain",
+      buffer: Buffer.from("graph TD\n    A[Dropped] --> B[Imported]"),
     });
 
     await expect.poll(async () => {

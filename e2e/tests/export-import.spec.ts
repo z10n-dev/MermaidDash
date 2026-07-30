@@ -12,9 +12,10 @@ import {
  * E2E Tests for Export/Import functionality
  * 
  * Tests the export/import feature:
- * - Export/Import `.mermaiddash` backups
- * - Import `.excalidraw` and JSON files
- * - Legacy SQLite verification/import endpoints
+ * - Backup export controls and the zip the API returns
+ *   (the `.mermaiddash` extension is applied client-side by Settings.tsx when
+ *   it names the download; the API always sends a .zip)
+ * - Importing `.mmd` and `.mermaid.json` files from the Dashboard
  */
 
 test.describe("Export Functionality", () => {
@@ -54,7 +55,7 @@ test.describe("Export Functionality", () => {
     await expect(downloadNameSelect.locator('option[value="mermaiddash.zip"]')).toHaveText(".mermaiddash.zip");
   });
 
-  test("should export .mermaiddash via API", async ({ request }) => {
+  test("should export a dated backup zip via API", async ({ request }) => {
     const drawing = await createDrawing(request, { name: `Export_API_${Date.now()}` });
     createdDrawingIds.push(drawing.id);
 
@@ -66,36 +67,49 @@ test.describe("Export Functionality", () => {
 
     const contentDisposition = response.headers()["content-disposition"];
     expect(contentDisposition).toContain("attachment");
-    expect(contentDisposition).toMatch(/mermaiddash-backup.*\.mermaiddash/);
+    expect(contentDisposition).toMatch(/mermaiddash-backup-\d{4}-\d{2}-\d{2}\.zip/);
   });
 
-  test("should export .mermaiddash.zip via API", async ({ request }) => {
+  test("should return a real zip archive body", async ({ request }) => {
     const drawing = await createDrawing(request, { name: `Export_Zip_${Date.now()}` });
     createdDrawingIds.push(drawing.id);
 
-    const response = await request.get(`${API_URL}/export/mermaid?ext=zip`);
+    const response = await request.get(`${API_URL}/export/mermaid`);
     expect(response.ok()).toBe(true);
 
-    const contentType = response.headers()["content-type"];
-    expect(contentType).toMatch(/application\/zip/);
-
-    const contentDisposition = response.headers()["content-disposition"];
-    expect(contentDisposition).toContain("attachment");
-    expect(contentDisposition).toMatch(/mermaiddash-backup.*\.mermaiddash\.zip/);
+    // "PK" is the ZIP local-file-header magic; a truncated or JSON error body
+    // would not start with it.
+    const body = await response.body();
+    expect(body.length).toBeGreaterThan(0);
+    expect(body.subarray(0, 2).toString("latin1")).toBe("PK");
   });
 });
 
 test.describe.serial("Import Functionality", () => {
   let createdDrawingIds: string[] = [];
+  /**
+   * Name prefixes this file's tests imported, so cleanup can find drawings it
+   * never learned the id of.
+   *
+   * Each token carries a timestamp on purpose. A broad token like "Import_"
+   * would be unsafe: Prisma's `contains` compiles to SQL LIKE, where `_` is a
+   * single-character wildcard, so "Import_" also matches "ImportedDnD_..." from
+   * drag-and-drop.spec.ts — which runs in a parallel worker against the same
+   * database.
+   */
+  let importedNameTokens: string[] = [];
 
   test.afterEach(async ({ request }) => {
-    const testDrawings = await listDrawings(request, { search: "Import_" });
-    for (const drawing of testDrawings) {
-      try {
-        await deleteDrawing(request, drawing.id);
-      } catch {
+    for (const token of importedNameTokens) {
+      const testDrawings = await listDrawings(request, { search: token });
+      for (const drawing of testDrawings) {
+        try {
+          await deleteDrawing(request, drawing.id);
+        } catch {
+        }
       }
     }
+    importedNameTokens = [];
 
     for (const id of createdDrawingIds) {
       try {
@@ -121,129 +135,55 @@ test.describe.serial("Import Functionality", () => {
     await expect(page.locator("#settings-import-backup")).toBeAttached();
   });
 
-  test("should import .excalidraw file from Dashboard", async ({ page }) => {
+  test("should import a .mmd file from Dashboard", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    const fixtureContent = JSON.stringify({
-      type: "excalidraw",
-      version: 2,
-      source: "e2e-test",
-      elements: [
-        {
-          id: "test-rect-1",
-          type: "rectangle",
-          x: 100,
-          y: 100,
-          width: 200,
-          height: 100,
-          angle: 0,
-          strokeColor: "#000000",
-          backgroundColor: "transparent",
-          fillStyle: "solid",
-          strokeWidth: 1,
-          strokeStyle: "solid",
-          roughness: 1,
-          opacity: 100,
-          groupIds: [],
-          frameId: null,
-          roundness: { type: 3 },
-          seed: 12345,
-          version: 1,
-          versionNonce: 67890,
-          isDeleted: false,
-          boundElements: null,
-          updated: Date.now(),
-          link: null,
-          locked: false,
-        }
-      ],
-      appState: {
-        viewBackgroundColor: "#ffffff"
-      },
-      files: {}
-    });
-
-
+    const testName = `Import_Mmd_${Date.now()}`;
+    importedNameTokens.push(testName);
 
     const fileInput = page.locator("#dashboard-import");
-
     await fileInput.setInputFiles({
-      name: `Import_ExcalidrawTest_${Date.now()}.excalidraw`,
-      mimeType: "application/json",
-      buffer: Buffer.from(fixtureContent),
+      name: `${testName}.mmd`,
+      mimeType: "text/plain",
+      buffer: Buffer.from("graph TD\n    A[Imported] --> B[Diagram]"),
     });
 
-    await expect(page.getByText("Uploads (Done)")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Uploads (Done)")).toBeVisible({ timeout: 15000 });
 
     await page.reload({ waitUntil: "networkidle" });
 
-    await page.getByPlaceholder("Search drawings...").fill("Import_ExcalidrawTest");
+    await page.getByPlaceholder("Search drawings...").fill(testName);
     await page.waitForTimeout(1000);
 
     const importedCards = page.locator("[id^='drawing-card-']");
-    await expect(importedCards.first()).toBeVisible({ timeout: 10000 });
+    await expect(importedCards.first()).toBeVisible({ timeout: 15000 });
   });
 
-  test("should import JSON drawing file from Dashboard", async ({ page }) => {
+  test("should import a .mermaid.json file from Dashboard", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    const timestamp = Date.now();
-    const testName = `Import_JSONTest_${timestamp}`;
+    const testName = `Import_JSONTest_${Date.now()}`;
+    importedNameTokens.push(testName);
 
+    // The frontend export format — see ExportData in frontend/src/utils/exportUtils.ts
     const jsonContent = JSON.stringify({
-      type: "excalidraw",
-      version: 2,
+      type: "mermaid",
+      version: 1,
       source: "e2e-test",
-      elements: [
-        {
-          id: "test-element",
-          type: "rectangle",
-          x: 100,
-          y: 100,
-          width: 100,
-          height: 100,
-          angle: 0,
-          strokeColor: "#000000",
-          backgroundColor: "transparent",
-          fillStyle: "solid",
-          strokeWidth: 1,
-          strokeStyle: "solid",
-          roughness: 1,
-          opacity: 100,
-          groupIds: [],
-          frameId: null,
-          roundness: null,
-          seed: 12345,
-          version: 1,
-          versionNonce: 12345,
-          isDeleted: false,
-          boundElements: null,
-          updated: Date.now(),
-          link: null,
-          locked: false,
-        }
-      ],
-      appState: { viewBackgroundColor: "#ffffff" },
-      files: {}
+      content: "graph TD\n    A[From JSON] --> B[End]",
     });
 
     const fileInput = page.locator("#dashboard-import");
-
     await fileInput.setInputFiles({
-      name: `${testName}.json`,
+      name: `${testName}.mermaid.json`,
       mimeType: "application/json",
       buffer: Buffer.from(jsonContent),
     });
 
     await expect(page.getByText("Uploads (Done)")).toBeVisible({ timeout: 15000 });
-
-    const failedIndicator = page.getByText("Failed");
-    if (await failedIndicator.isVisible()) {
-      console.log("Import failed - skipping rest of test");
-      return;
-    }
+    await expect(page.getByText("Failed")).toHaveCount(0);
 
     await page.reload({ waitUntil: "networkidle" });
 
@@ -260,14 +200,11 @@ test.describe.serial("Import Functionality", () => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    const invalidContent = "this is not valid JSON or excalidraw format {}{}";
-
     const fileInput = page.locator("#dashboard-import");
-
     await fileInput.setInputFiles({
-      name: `Import_Invalid_${Date.now()}.excalidraw`,
+      name: `Import_Invalid_${Date.now()}.mermaid.json`,
       mimeType: "application/json",
-      buffer: Buffer.from(invalidContent),
+      buffer: Buffer.from("this is not a valid .mermaid.json payload {}{}"),
     });
 
     await expect(page.getByText("Uploads (Done)")).toBeVisible({ timeout: 10000 });
@@ -278,30 +215,18 @@ test.describe.serial("Import Functionality", () => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    const timestamp = Date.now();
-    const searchPrefix = `Import_Multi_${timestamp}`;
+    const searchPrefix = `Import_Multi_${Date.now()}`;
+    importedNameTokens.push(searchPrefix);
     const files = [
       {
-        name: `${searchPrefix}_A.excalidraw`,
-        mimeType: "application/json",
-        buffer: Buffer.from(JSON.stringify({
-          type: "excalidraw",
-          version: 2,
-          elements: [],
-          appState: { viewBackgroundColor: "#ffffff" },
-          files: {}
-        })),
+        name: `${searchPrefix}_A.mmd`,
+        mimeType: "text/plain",
+        buffer: Buffer.from("graph TD\n    A1[One] --> B1[Two]"),
       },
       {
-        name: `${searchPrefix}_B.excalidraw`,
-        mimeType: "application/json",
-        buffer: Buffer.from(JSON.stringify({
-          type: "excalidraw",
-          version: 2,
-          elements: [],
-          appState: { viewBackgroundColor: "#f0f0f0" },
-          files: {}
-        })),
+        name: `${searchPrefix}_B.mmd`,
+        mimeType: "text/plain",
+        buffer: Buffer.from("graph LR\n    A2[Three] --> B2[Four]"),
       },
     ];
 
@@ -311,26 +236,13 @@ test.describe.serial("Import Functionality", () => {
     await expect(page.getByText("Uploads (Done)")).toBeVisible({ timeout: 10000 });
 
     await page.getByPlaceholder("Search drawings...").fill(searchPrefix);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
     const importedCards = page.locator("[id^='drawing-card-']");
     await expect(importedCards).toHaveCount(2);
   });
 });
 
-test.describe("Database Import Verification", () => {
-  test("should verify SQLite import endpoint exists", async ({ request }) => {
-    const response = await request.post(`${API_URL}/import/sqlite/legacy/verify`, {
-      headers: await getCsrfHeaders(request),
-      multipart: {
-        db: {
-          name: "test.sqlite",
-          mimeType: "application/x-sqlite3",
-          buffer: Buffer.from(""),
-        },
-      },
-    });
-
-    expect([400, 500]).toContain(response.status());
-  });
-});
+// Note: the legacy SQLite import endpoint (/import/sqlite/legacy/verify) no
+// longer exists — /import/mermaid is the only import route — so there is
+// nothing left to verify here.
