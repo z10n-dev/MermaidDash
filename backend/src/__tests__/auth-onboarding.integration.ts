@@ -20,7 +20,7 @@ describe("Auth onboarding decision", () => {
     ({ app } = await import("../index"));
 
     agent = request.agent(app);
-    const csrfRes = await agent.get("/csrf-token").set("User-Agent", userAgent);
+    const csrfRes = await agent.get("/api/csrf-token").set("User-Agent", userAgent);
     csrfHeaderName = csrfRes.body.header;
     csrfToken = csrfRes.body.token;
   });
@@ -79,7 +79,7 @@ describe("Auth onboarding decision", () => {
       },
     });
 
-    const response = await request(app).get("/auth/status").set("User-Agent", userAgent);
+    const response = await request(app).get("/api/auth/status").set("User-Agent", userAgent);
 
     expect(response.status).toBe(200);
     expect(response.body?.authEnabled).toBe(false);
@@ -94,7 +94,7 @@ describe("Auth onboarding decision", () => {
     });
 
     const choiceResponse = await agent
-      .post("/auth/onboarding-choice")
+      .post("/api/auth/onboarding-choice")
       .set("User-Agent", userAgent)
       .set(csrfHeaderName, csrfToken)
       .send({ enableAuth: false });
@@ -103,7 +103,7 @@ describe("Auth onboarding decision", () => {
     expect(choiceResponse.body?.authEnabled).toBe(false);
     expect(choiceResponse.body?.authOnboardingCompleted).toBe(true);
 
-    const statusResponse = await request(app).get("/auth/status").set("User-Agent", userAgent);
+    const statusResponse = await request(app).get("/api/auth/status").set("User-Agent", userAgent);
     expect(statusResponse.status).toBe(200);
     expect(statusResponse.body?.authOnboardingRequired).toBe(false);
   });
@@ -117,7 +117,7 @@ describe("Auth onboarding decision", () => {
     });
 
     const choiceResponse = await agent
-      .post("/auth/onboarding-choice")
+      .post("/api/auth/onboarding-choice")
       .set("User-Agent", userAgent)
       .set(csrfHeaderName, csrfToken)
       .send({ enableAuth: true });
@@ -127,7 +127,7 @@ describe("Auth onboarding decision", () => {
     expect(choiceResponse.body?.bootstrapRequired).toBe(true);
     expect(choiceResponse.body?.authOnboardingCompleted).toBe(true);
 
-    const statusResponse = await request(app).get("/auth/status").set("User-Agent", userAgent);
+    const statusResponse = await request(app).get("/api/auth/status").set("User-Agent", userAgent);
     expect(statusResponse.status).toBe(200);
     expect(statusResponse.body?.authEnabled).toBe(true);
     expect(statusResponse.body?.bootstrapRequired).toBe(true);
@@ -136,7 +136,7 @@ describe("Auth onboarding decision", () => {
 
   it("requires CSRF token for bootstrap registration", async () => {
     const noCsrfResponse = await agent
-      .post("/auth/register")
+      .post("/api/auth/register")
       .set("User-Agent", userAgent)
       .send({
         email: "bootstrap-admin@test.local",
@@ -157,7 +157,7 @@ describe("Auth onboarding decision", () => {
     expect(issued.code).toBeTruthy();
 
     const bootstrapResponse = await agent
-      .post("/auth/register")
+      .post("/api/auth/register")
       .set("User-Agent", userAgent)
       .set(csrfHeaderName, csrfToken)
       .send({
@@ -176,7 +176,7 @@ describe("Auth onboarding decision", () => {
 
   it("requires CSRF token for login and does not expose tokens in response body", async () => {
     const noCsrfResponse = await agent
-      .post("/auth/login")
+      .post("/api/auth/login")
       .set("User-Agent", userAgent)
       .send({
         email: "bootstrap-admin@test.local",
@@ -187,7 +187,7 @@ describe("Auth onboarding decision", () => {
     expect(noCsrfResponse.body?.error).toBe("CSRF token missing");
 
     const loginResponse = await agent
-      .post("/auth/login")
+      .post("/api/auth/login")
       .set("User-Agent", userAgent)
       .set(csrfHeaderName, csrfToken)
       .send({

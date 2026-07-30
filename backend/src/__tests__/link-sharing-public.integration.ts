@@ -75,7 +75,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
 
     ownerAgent = request.agent(app);
     const csrfRes = await ownerAgent
-      .get("/csrf-token")
+      .get("/api/csrf-token")
       .set("User-Agent", userAgent);
     ownerCsrfHeaderName = csrfRes.body.header;
     ownerCsrfToken = csrfRes.body.token;
@@ -89,7 +89,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     const drawing = await createDrawing();
 
     const linkRes = await ownerAgent
-      .post(`/drawings/${drawing.id}/link-shares`)
+      .post(`/api/drawings/${drawing.id}/link-shares`)
       .set("User-Agent", userAgent)
       .set("Authorization", `Bearer ${ownerToken}`)
       .set(ownerCsrfHeaderName, ownerCsrfToken)
@@ -97,7 +97,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     expect(linkRes.status).toBe(200);
 
     const anonGet = await request(app)
-      .get(`/drawings/${drawing.id}`)
+      .get(`/api/drawings/${drawing.id}`)
       .set("User-Agent", userAgent);
     expect(anonGet.status).toBe(200);
     expect(anonGet.body?.id).toBe(drawing.id);
@@ -105,13 +105,13 @@ describe("Link Sharing - Public By Drawing ID", () => {
 
     const anonAgent = request.agent(app);
     const anonCsrfRes = await anonAgent
-      .get("/csrf-token")
+      .get("/api/csrf-token")
       .set("User-Agent", userAgent);
     const anonCsrfHeaderName = anonCsrfRes.body.header;
     const anonCsrfToken = anonCsrfRes.body.token;
 
     const anonPut = await anonAgent
-      .put(`/drawings/${drawing.id}`)
+      .put(`/api/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
       .set(anonCsrfHeaderName, anonCsrfToken)
       .send({ name: "Should Not Save" });
@@ -122,7 +122,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     const drawing = await createDrawing();
 
     const linkRes = await ownerAgent
-      .post(`/drawings/${drawing.id}/link-shares`)
+      .post(`/api/drawings/${drawing.id}/link-shares`)
       .set("User-Agent", userAgent)
       .set("Authorization", `Bearer ${ownerToken}`)
       .set(ownerCsrfHeaderName, ownerCsrfToken)
@@ -131,13 +131,13 @@ describe("Link Sharing - Public By Drawing ID", () => {
 
     const anonAgent = request.agent(app);
     const anonCsrfRes = await anonAgent
-      .get("/csrf-token")
+      .get("/api/csrf-token")
       .set("User-Agent", userAgent);
     const anonCsrfHeaderName = anonCsrfRes.body.header;
     const anonCsrfToken = anonCsrfRes.body.token;
 
     const anonPut = await anonAgent
-      .put(`/drawings/${drawing.id}`)
+      .put(`/api/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
       .set(anonCsrfHeaderName, anonCsrfToken)
       .send({ name: "Renamed By Anonymous" });
@@ -150,7 +150,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     const drawing = await createDrawing();
 
     const first = await ownerAgent
-      .post(`/drawings/${drawing.id}/link-shares`)
+      .post(`/api/drawings/${drawing.id}/link-shares`)
       .set("User-Agent", userAgent)
       .set("Authorization", `Bearer ${ownerToken}`)
       .set(ownerCsrfHeaderName, ownerCsrfToken)
@@ -160,7 +160,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     expect(typeof firstShareId).toBe("string");
 
     const second = await ownerAgent
-      .post(`/drawings/${drawing.id}/link-shares`)
+      .post(`/api/drawings/${drawing.id}/link-shares`)
       .set("User-Agent", userAgent)
       .set("Authorization", `Bearer ${ownerToken}`)
       .set(ownerCsrfHeaderName, ownerCsrfToken)

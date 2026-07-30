@@ -82,7 +82,7 @@ describe("Auth Enabled Toggle Authorization", () => {
 
     agent = request.agent(app);
     const csrfRes = await agent
-      .get("/csrf-token")
+      .get("/api/csrf-token")
       .set("User-Agent", userAgent);
     csrfHeaderName = csrfRes.body.header;
     csrfToken = csrfRes.body.token;
@@ -94,7 +94,7 @@ describe("Auth Enabled Toggle Authorization", () => {
 
   it("rejects unauthenticated auth-enabled toggle when auth is enabled", async () => {
     const response = await agent
-      .post("/auth/auth-enabled")
+      .post("/api/auth/auth-enabled")
       .set("User-Agent", userAgent)
       .set(csrfHeaderName, csrfToken)
       .send({ enabled: false });
@@ -104,7 +104,7 @@ describe("Auth Enabled Toggle Authorization", () => {
 
   it("rejects non-admin auth-enabled toggle", async () => {
     const response = await agent
-      .post("/auth/auth-enabled")
+      .post("/api/auth/auth-enabled")
       .set("User-Agent", userAgent)
       .set("Authorization", `Bearer ${regularUserToken}`)
       .set(csrfHeaderName, csrfToken)
@@ -116,13 +116,13 @@ describe("Auth Enabled Toggle Authorization", () => {
 
   it("applies auth mode change immediately for subsequent requests", async () => {
     const warmStatusResponse = await request(app)
-      .get("/auth/status")
+      .get("/api/auth/status")
       .set("User-Agent", userAgent);
     expect(warmStatusResponse.status).toBe(200);
     expect(warmStatusResponse.body?.authEnabled).toBe(true);
 
     const toggleResponse = await agent
-      .post("/auth/auth-enabled")
+      .post("/api/auth/auth-enabled")
       .set("User-Agent", userAgent)
       .set("Authorization", `Bearer ${adminUserToken}`)
       .set(csrfHeaderName, csrfToken)
@@ -131,7 +131,7 @@ describe("Auth Enabled Toggle Authorization", () => {
     expect(toggleResponse.body?.authEnabled).toBe(false);
 
     const drawingsResponse = await request(app)
-      .get("/drawings")
+      .get("/api/drawings")
       .set("User-Agent", userAgent);
     expect(drawingsResponse.status).toBe(200);
     expect(Array.isArray(drawingsResponse.body?.drawings)).toBe(true);

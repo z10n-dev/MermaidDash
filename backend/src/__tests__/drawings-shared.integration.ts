@@ -112,7 +112,7 @@ describe("Drawings - Shared With Me", () => {
     );
 
     const response = await request(app)
-      .get("/drawings/shared")
+      .get("/api/drawings/shared")
       .set("User-Agent", userAgent)
       .set("Authorization", `Bearer ${tokenA}`);
 
