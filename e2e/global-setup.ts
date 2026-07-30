@@ -1,7 +1,9 @@
 import type { FullConfig } from "@playwright/test";
 
 const DEFAULT_BACKEND_PORT = 8000;
-const API_URL = process.env.API_URL || `http://localhost:${DEFAULT_BACKEND_PORT}`;
+/** /health is the one route served at the origin; everything else lives under /api. */
+const BACKEND_ORIGIN = process.env.API_URL || `http://localhost:${DEFAULT_BACKEND_PORT}`;
+const API_URL = `${BACKEND_ORIGIN.replace(/\/+$/, "")}/api`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -9,13 +11,13 @@ const waitForBackend = async () => {
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     try {
-      const resp = await fetch(`${API_URL}/health`);
+      const resp = await fetch(`${BACKEND_ORIGIN}/health`);
       if (resp.ok) return;
     } catch {
     }
     await sleep(500);
   }
-  throw new Error(`Timed out waiting for backend health at ${API_URL}/health`);
+  throw new Error(`Timed out waiting for backend health at ${BACKEND_ORIGIN}/health`);
 };
 
 const getSetCookiePairs = (headers: Headers): string => {

@@ -2,7 +2,18 @@ import { APIRequestContext, expect } from "@playwright/test";
 
 const DEFAULT_BACKEND_PORT = 8000;
 
-export const API_URL = process.env.API_URL || `http://localhost:${DEFAULT_BACKEND_PORT}`;
+/** Backend origin. Only /health is served here; see API_URL for everything else. */
+export const BACKEND_ORIGIN =
+  process.env.API_URL || `http://localhost:${DEFAULT_BACKEND_PORT}`;
+
+/**
+ * Base URL for application routes.
+ *
+ * The backend mounts every route except /health under /api (see the apiRoot
+ * router in backend/src/index.ts), so this prefix is required — without it
+ * every helper below 404s.
+ */
+export const API_URL = `${BACKEND_ORIGIN.replace(/\/+$/, "")}/api`;
 
 type CsrfTokenResponse = {
   token: string;
@@ -109,6 +120,7 @@ export interface CollectionRecord {
 
 export interface CreateDrawingOptions {
   name?: string;
+  content?: string;
   elements?: any[];
   appState?: Record<string, any>;
   files?: Record<string, any>;
