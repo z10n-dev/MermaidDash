@@ -899,6 +899,7 @@ export const Editor: React.FC = () => {
                   {peers.map(peer => (
                     <div key={peer.id} className="relative group">
                       <div
+                        data-testid="collaborator-avatar"
                         className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-white shadow-sm transition-all duration-300 ${
                           !peer.isActive ? 'opacity-30 grayscale' : ''
                         }`}

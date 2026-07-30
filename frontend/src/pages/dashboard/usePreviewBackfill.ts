@@ -13,6 +13,27 @@ import {
 const BATCH_SIZE = 8;
 const CONCURRENCY = 2;
 
+/**
+ * Run `fn` once the browser has spare time.
+ *
+ * Thumbnail generation is background work: it renders mermaid and rasterizes to
+ * canvas, both of which occupy the main thread, and it issues a request pair per
+ * card. Waiting for idle keeps it from competing with the dashboard's own
+ * initial render and data fetches.
+ */
+const whenIdle = (fn: () => void): void => {
+  const idle = window as typeof window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  };
+
+  if (typeof idle.requestIdleCallback === "function") {
+    idle.requestIdleCallback(fn, { timeout: 2000 });
+    return;
+  }
+
+  window.setTimeout(fn, 250);
+};
+
 type UsePreviewBackfillOptions = {
   drawings: DrawingSummary[];
   setDrawings: React.Dispatch<React.SetStateAction<DrawingSummary[]>>;
@@ -85,8 +106,18 @@ export const usePreviewBackfill = ({
       isCancelled: () => cancelledRef.current,
     };
 
-    runPreviewBackfill(ids, deps, { concurrency: CONCURRENCY }).finally(() => {
-      isRunningRef.current = false;
+    // Not cancelled on cleanup: this effect re-runs on every `drawings` change,
+    // including the ones onSaved causes, so cancelling here would drop the
+    // pending batch while isRunningRef stayed set and the backfill would stall.
+    // The callback checks cancelledRef itself, which covers unmount.
+    whenIdle(() => {
+      if (cancelledRef.current) {
+        isRunningRef.current = false;
+        return;
+      }
+      runPreviewBackfill(ids, deps, { concurrency: CONCURRENCY }).finally(() => {
+        isRunningRef.current = false;
+      });
     });
   }, [drawings, enabled, theme, applyPreview]);
 };
