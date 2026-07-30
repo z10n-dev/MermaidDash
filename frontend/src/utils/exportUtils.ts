@@ -88,6 +88,9 @@ const parseSvgDimensions = (svgContent: string): { w: number; h: number } => {
   return { w, h };
 };
 
+/** Give up rasterizing an SVG after this long so callers never hang. */
+const SVG_RASTERIZE_TIMEOUT_MS = 10_000;
+
 /**
  * Render an SVG string to a canvas and return the canvas.
  */
@@ -112,11 +115,21 @@ const svgToCanvas = (
 
   return new Promise((resolve) => {
     const img = new Image();
+    const timer = setTimeout(() => {
+      img.onload = null;
+      img.onerror = null;
+      resolve(null);
+    }, SVG_RASTERIZE_TIMEOUT_MS);
+
     img.onload = () => {
+      clearTimeout(timer);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas);
     };
-    img.onerror = () => resolve(null);
+    img.onerror = () => {
+      clearTimeout(timer);
+      resolve(null);
+    };
     img.src = svgData;
   });
 };

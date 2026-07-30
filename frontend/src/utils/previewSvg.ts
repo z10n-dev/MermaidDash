@@ -1,32 +1,41 @@
 import mermaid from "mermaid";
 
-let mermaidInitialized = false;
 let renderCounter = 0;
 
-const ensureMermaidInitialized = () => {
-  if (mermaidInitialized) return;
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: "default",
-    securityLevel: "loose",
-  });
-  mermaidInitialized = true;
-};
+/**
+ * True when the mermaid source declares its own theme in frontmatter.
+ *
+ * When it does, callers must NOT pass `theme` to mermaid.initialize — the
+ * frontmatter value should win.
+ */
+export const hasFrontmatterTheme = (content: string): boolean =>
+  /^---\s*\n[\s\S]*?theme:\s*\S+[\s\S]*?\n---/.test(content);
 
 /**
- * Render mermaid diagram content to an SVG string.
+ * Render mermaid diagram content to a self-contained SVG string.
  * Returns the SVG markup or null if rendering fails.
+ *
+ * mermaid is a module-level singleton shared with the editor, which
+ * re-initializes it with the app theme on every render. We therefore
+ * re-initialize on every call rather than memoizing — otherwise a dashboard
+ * render could silently inherit the editor's theme.
  */
 export const renderMermaidToSvg = async (
-  content: string
+  content: string,
+  theme: "default" | "dark" = "default"
 ): Promise<string | null> => {
   if (!content || content.trim().length === 0) return null;
 
+  const trimmed = content.trim();
   try {
-    ensureMermaidInitialized();
+    mermaid.initialize({
+      startOnLoad: false,
+      ...(!hasFrontmatterTheme(trimmed) && { theme }),
+      securityLevel: "loose",
+    });
     const id = `mermaid-preview-${++renderCounter}`;
-    const { svg } = await mermaid.render(id, content.trim());
-    return svg;
+    const { svg } = await mermaid.render(id, trimmed);
+    return ensureSvgHasStyles(svg);
   } catch (e) {
     console.error("Failed to render mermaid preview:", e);
     return null;

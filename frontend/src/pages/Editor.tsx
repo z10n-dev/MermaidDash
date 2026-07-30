@@ -26,7 +26,7 @@ import { AiChatPanel } from './editor/AiChatPanel';
 import { useCanvasInteraction } from './editor/useCanvasInteraction';
 import { useUndoRedo } from './editor/useUndoRedo';
 import { useNodeSelection } from './editor/useNodeSelection';
-import { ensureSvgHasStyles } from '../utils/previewSvg';
+import { ensureSvgHasStyles, hasFrontmatterTheme } from '../utils/previewSvg';
 import { getProvider } from '../services/ai/provider';
 import { svgToPngDataUrl } from '../utils/exportUtils';
 
@@ -142,10 +142,10 @@ export const Editor: React.FC = () => {
 
     try {
       // Only set a default theme if the content doesn't specify one in frontmatter
-      const hasFrontmatterTheme = /^---\s*\n[\s\S]*?theme:\s*\S+[\s\S]*?\n---/.test(mermaidContent);
+      const frontmatterTheme = hasFrontmatterTheme(mermaidContent);
       mermaid.initialize({
         startOnLoad: false,
-        ...(!hasFrontmatterTheme && { theme: theme === 'dark' ? 'dark' : 'default' }),
+        ...(!frontmatterTheme && { theme: theme === 'dark' ? 'dark' : 'default' }),
         securityLevel: 'loose',
       });
 
