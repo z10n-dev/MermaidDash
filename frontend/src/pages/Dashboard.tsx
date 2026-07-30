@@ -11,6 +11,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { useUpload } from '../context/UploadContext';
 import { DragOverlayPortal, getSelectionBounds, type Point, type SelectionBounds } from './dashboard/shared';
 import { useDashboardData } from './dashboard/useDashboardData';
+import { usePreviewBackfill } from './dashboard/usePreviewBackfill';
 import { io, type Socket } from 'socket.io-client';
 
 const PAGE_SIZE = 24;
@@ -91,6 +92,15 @@ export const Dashboard: React.FC = () => {
     sortDirection: sortConfig.direction,
     pageSize: PAGE_SIZE,
     onRefreshSuccess: resetSelection,
+  });
+
+  // Drawings created outside the editor (MCP, import, API) arrive with no
+  // preview. Generate the missing thumbnails here so cards are not blank until
+  // someone opens the editor and navigates back.
+  usePreviewBackfill({
+    drawings,
+    setDrawings,
+    enabled: selectedCollectionId !== 'trash',
   });
 
   useEffect(() => {
