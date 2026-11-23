@@ -12,7 +12,7 @@ Changes against [langtind/MermaidDash](https://github.com/langtind/MermaidDash):
    `--build-arg SHOW_MERMAID_WARNINGS=1` (or `VITE_SHOW_MERMAID_WARNINGS=1`
    for a local `npm run dev`).
 
-3. **Fixed `/api` prefix stripping in the frontend nginx proxy.**
+2. **Fixed `/api` prefix stripping in the frontend nginx proxy.**
    `location /api/ { proxy_pass http://backend:8000/; }` removed the `/api`
    prefix, so the backend received `/auth/status` instead of `/api/auth/status`
    — every API call 404'd, and on a fresh deployment the auth-onboarding gate
@@ -20,7 +20,7 @@ Changes against [langtind/MermaidDash](https://github.com/langtind/MermaidDash):
    which made it impossible to get past the setup/register screen.
    Dropping the trailing slash in `proxy_pass` keeps the prefix.
 
-2. **CI builds and publishes Docker images to GHCR.**
+3. **CI builds and publishes Docker images to GHCR.**
    `.github/workflows/docker-publish.yml` builds `backend` and `frontend` on
    every push to `main`, on `v*` tags, and on manual dispatch:
 
