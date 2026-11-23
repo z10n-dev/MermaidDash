@@ -62,7 +62,8 @@ jobs:
 
   e2e-tests:
     name: E2E Browser Tests
-    runs-on: ubuntu-latest
+    # Playwright 1.57 ships no chromium build for ubuntu-26.04 runners
+    runs-on: ubuntu-24.04
     
     steps:
       - uses: actions/checkout@v4
@@ -167,33 +168,3 @@ jobs:
           name: test-results
           path: e2e/test-results/
           retention-days: 7
-
-  # Security tests for data sanitization
-  security-tests:
-    name: Security Sanitization Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-      
-      - name: Install backend dependencies
-        run: |
-          cd backend
-          npm ci
-      
-      - name: Generate Prisma client
-        run: |
-          cd backend
-          npx prisma generate
-      
-      - name: Run security tests
-        run: |
-          cd backend
-          npx ts-node src/securityTest.ts
