@@ -1,4 +1,5 @@
 import mermaid from "mermaid";
+import { SUPPRESS_MERMAID_ERROR_RENDERING } from "./mermaidWarnings";
 
 let renderCounter = 0;
 
@@ -32,6 +33,7 @@ export const renderMermaidToSvg = async (
       startOnLoad: false,
       ...(!hasFrontmatterTheme(trimmed) && { theme }),
       securityLevel: "loose",
+      suppressErrorRendering: SUPPRESS_MERMAID_ERROR_RENDERING,
     });
     const id = `mermaid-preview-${++renderCounter}`;
     const { svg } = await mermaid.render(id, trimmed);

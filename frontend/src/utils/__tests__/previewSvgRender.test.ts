@@ -41,6 +41,14 @@ describe("renderMermaidToSvg", () => {
     expect(vi.mocked(mermaid.initialize).mock.calls[0][0]).not.toHaveProperty("theme");
   });
 
+  it("suppresses mermaid's own error rendering by default (fork behaviour)", async () => {
+    await renderMermaidToSvg("graph TD\n A-->B", "default");
+
+    expect(vi.mocked(mermaid.initialize).mock.calls[0][0]).toMatchObject({
+      suppressErrorRendering: true,
+    });
+  });
+
   it("returns null for empty content without calling mermaid", async () => {
     expect(await renderMermaidToSvg("   ")).toBeNull();
     expect(vi.mocked(mermaid.render)).not.toHaveBeenCalled();

@@ -72,8 +72,6 @@ export function useCanvasInteraction() {
 
     // Scale down so content fits within visible width
     const zoom = pz.getZoom();
-    const realZoom = sizes.realZoom;
-    const contentWidth = sizes.viewBox.width * realZoom;
     const newZoom = zoom * (visibleWidth / viewportWidth);
     pz.zoom(newZoom);
 

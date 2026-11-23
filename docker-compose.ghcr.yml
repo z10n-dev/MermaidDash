@@ -1,0 +1,66 @@
+# Compose file for the z10n-dev fork images (prebuilt in GHCR).
+# Copy/merge into your own compose stack; values are the upstream defaults.
+
+services:
+  backend:
+    image: ghcr.io/z10n-dev/mermaiddash-backend:latest
+    container_name: mermaiddash-backend
+    environment:
+      - DATABASE_URL=file:/app/prisma/dev.db
+      - PORT=8000
+      - NODE_ENV=production
+      - AUTH_MODE=${AUTH_MODE:-local}
+      # Keep disabled by default; only enable when a trusted proxy sanitizes forwarded headers.
+      - TRUST_PROXY=false
+      - JWT_SECRET=${JWT_SECRET}
+      - CSRF_SECRET=${CSRF_SECRET}
+      # - FRONTEND_URL=https://mermaiddash.example.com
+    volumes:
+      - backend-data:/app/prisma
+    networks:
+      - mermaiddash-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:8000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/z10n-dev/mermaiddash-frontend:latest
+    container_name: mermaiddash-frontend
+    ports:
+      - "6767:80"
+    environment:
+      - BACKEND_URL=backend:8000
+    depends_on:
+      - backend
+    networks:
+      - mermaiddash-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:80",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  mermaiddash-network:
+    driver: bridge
+
+volumes:
+  backend-data:

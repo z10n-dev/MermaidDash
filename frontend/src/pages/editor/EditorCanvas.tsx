@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import type { ToolMode } from './useCanvasInteraction';
+import { SHOW_MERMAID_WARNINGS } from '../../utils/mermaidWarnings';
 
 type EditorCanvasProps = {
   previewSvg: string;
@@ -298,14 +299,15 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
       }}
       onClick={handleCanvasClick}
     >
-      {previewError && !previewSvg && (
+      {/* Fork: mermaid warning/error blocks are hidden unless VITE_SHOW_MERMAID_WARNINGS=1 */}
+      {SHOW_MERMAID_WARNINGS && previewError && !previewSvg && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center p-8 max-w-md">
           <p className="text-sm text-red-500 dark:text-red-400 font-medium mb-2">Diagram Error</p>
           <pre className="text-xs text-muted-foreground whitespace-pre-wrap">{previewError}</pre>
         </div>
       )}
 
-      {previewError && previewSvg && (
+      {SHOW_MERMAID_WARNINGS && previewError && previewSvg && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-600 dark:text-red-400 shadow-sm backdrop-blur-sm">
           Syntax error — showing last valid diagram
         </div>

@@ -19,6 +19,11 @@ ARG VITE_APP_BUILD_LABEL
 ENV VITE_APP_VERSION=$VITE_APP_VERSION
 ENV VITE_APP_BUILD_LABEL=$VITE_APP_BUILD_LABEL
 
+# Fork: hide mermaid warning/error blocks by default.
+# Build with --build-arg SHOW_MERMAID_WARNINGS=1 to restore upstream behaviour.
+ARG SHOW_MERMAID_WARNINGS=0
+ENV VITE_SHOW_MERMAID_WARNINGS=$SHOW_MERMAID_WARNINGS
+
 # Build the application
 RUN npm run build
 

@@ -27,6 +27,7 @@ import { useCanvasInteraction } from './editor/useCanvasInteraction';
 import { useUndoRedo } from './editor/useUndoRedo';
 import { useNodeSelection } from './editor/useNodeSelection';
 import { ensureSvgHasStyles, hasFrontmatterTheme } from '../utils/previewSvg';
+import { SUPPRESS_MERMAID_ERROR_RENDERING } from '../utils/mermaidWarnings';
 import { getProvider } from '../services/ai/provider';
 import { svgToPngDataUrl } from '../utils/exportUtils';
 
@@ -127,6 +128,8 @@ export const Editor: React.FC = () => {
       startOnLoad: false,
       theme: theme === 'dark' ? 'dark' : 'default',
       securityLevel: 'loose',
+      // Fork: do not paint mermaid's own error diagram over the canvas.
+      suppressErrorRendering: SUPPRESS_MERMAID_ERROR_RENDERING,
     });
   }, [theme]);
 
@@ -147,6 +150,8 @@ export const Editor: React.FC = () => {
         startOnLoad: false,
         ...(!frontmatterTheme && { theme: theme === 'dark' ? 'dark' : 'default' }),
         securityLevel: 'loose',
+        // Fork: do not paint mermaid's own error diagram over the canvas.
+        suppressErrorRendering: SUPPRESS_MERMAID_ERROR_RENDERING,
       });
 
       const containerId = `mermaid-preview-${renderCount}`;
